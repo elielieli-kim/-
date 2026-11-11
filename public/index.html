@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ledger.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#view">본문으로 건너뛰기</a>
+  <header class="top">
+    <a class="brand" href="#/">ledger<span class="dot">.</span></a>
+    <nav aria-label="주 메뉴">
+      <a href="#/" data-route="">spending</a>
+      <a href="#/transactions" data-route="transactions">transactions</a>
+      <a href="#/upload" data-route="upload">upload</a>
+      <a href="#/budget" data-route="budget">budget</a>
+      <a href="#/saving" data-route="saving">saving</a>
+    </nav>
+    <div id="account"></div>
+  </header>
+  <main id="view" tabindex="-1"></main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
