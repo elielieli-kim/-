@@ -3,9 +3,6 @@
   "framework": null,
   "buildCommand": null,
   "outputDirectory": "public",
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index?__path=:path*" }
-  ],
   "headers": [
     {
       "source": "/(.*)",

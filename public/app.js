@@ -1,4 +1,5 @@
 import { RibbonField, countUp } from './ribbon.js';
+import { api, storageOk } from './local-api.js';
 
 const $view = document.getElementById('view');
 const won = (n) => `${Math.round(n).toLocaleString('ko-KR')}원`;
@@ -18,60 +19,6 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 const title = (word, tag = 'h2') => h(tag, { class: 'display' }, word, h('span', { class: 'p' }, '.'));
-
-let me = null; // 로그인한 사용자 { email }
-
-async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && !path.startsWith('/api/auth/')) { toAuth(); throw new Error('로그인이 필요해요'); } // 세션 만료
-  if (!res.ok) throw new Error(data.error || '요청에 실패했어요');
-  return data;
-}
-
-// ---------- 로그인 / 회원가입 ----------
-function toAuth() { me = null; cats = []; paintAccount(); authView(); }
-
-function paintAccount() {
-  document.querySelector('nav').hidden = !me;
-  const box = document.getElementById('account');
-  box.replaceChildren(...(me ? [
-    h('span', { class: 'who', title: me.email }, me.email),
-    h('button', { class: 'btn ghost sm', onclick: guard(async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); toast('로그아웃했어요'); location.hash = '#/'; toAuth(); }) }, '로그아웃'),
-  ] : []));
-}
-
-function authView() {
-  let signup = false;
-  const email = h('input', { type: 'email', required: true, autocomplete: 'email', placeholder: 'you@example.com', maxlength: 254 });
-  const pw = h('input', { type: 'password', required: true, minlength: 8, maxlength: 128, autocomplete: 'current-password' });
-  const submit = h('button', { class: 'btn', type: 'submit' }, '로그인');
-  const hint = h('small', { class: 'muted' });
-  const switcher = h('button', { class: 'btn ghost sm', type: 'button' });
-  const canvas = h('canvas', { 'aria-hidden': 'true' });
-  const sync = () => {
-    submit.textContent = signup ? '가입하기' : '로그인';
-    switcher.textContent = signup ? '이미 계정이 있어요' : '처음이에요 · 가입하기';
-    pw.autocomplete = signup ? 'new-password' : 'current-password';
-    hint.textContent = signup ? '비밀번호는 8자 이상. 내 가계부는 나만 볼 수 있어요.' : '';
-  };
-  switcher.onclick = () => { signup = !signup; sync(); };
-  const form = h('form', { class: 'form card', style: 'max-width:420px;margin:0 auto;grid-template-columns:1fr', onsubmit: guard(async (e) => {
-    e.preventDefault();
-    submit.disabled = true;
-    try {
-      me = await api(signup ? '/api/auth/signup' : '/api/auth/login', { method: 'POST', body: { email: email.value, password: pw.value } });
-      pw.value = ''; location.hash = '#/'; await render();
-    } finally { submit.disabled = false; }
-  }) }, h('label', {}, '이메일', email), h('label', {}, '비밀번호', pw), hint,
-  h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, submit, switcher));
-  sync();
-  $view.replaceChildren(h('div', {},
-    h('div', { class: 'hero', style: 'height:clamp(240px,34vw,340px)' }, canvas, h('div', { class: 'copy' }, title('ledger', 'h1'), h('p', { class: 'total' }, '쓴 만큼 길어지는 가계부'))),
-    h('section', { style: 'margin-top:24px' }, form)));
-  new RibbonField(canvas, [0, 1, 2].map((i) => ({ frac: [0.95, 0.65, 0.8][i], y: 0.3 + i * 0.22, amp: 24, thick: 28 - i * 3, freq: 1 + i * 0.3, twist: 1.6 + i * 0.5, seed: i * 2 })));
-  email.focus();
-}
 
 let toastTimer;
 function toast(msg) {
@@ -123,7 +70,8 @@ async function dashboard() {
   // 카테고리 리본
   const rows = h('div', { class: 'rows' });
   const rowFields = [];
-  if (list.length === 0) rows.append(h('p', { class: 'empty' }, '이 달 지출 내역이 아직 없어요. transactions에서 추가하거나 upload에서 CSV를 올려 보세요.'));
+  if (list.length === 0) rows.append(h('div', { class: 'empty' }, h('p', {}, '이 달 지출 내역이 아직 없어요. transactions에서 추가하거나 upload에서 CSV를 올려 보세요.'),
+    h('button', { class: 'btn ghost', type: 'button', onclick: guard(async () => { await api('/api/sample', { method: 'POST', body: {} }); toast('샘플을 넣었어요'); render(); }) }, '샘플 데이터로 둘러보기')));
   list.forEach((c) => {
     const pct = s.expense ? Math.round((c.total / s.expense) * 100) : 0;
     const over = c.budget && c.total > c.budget;
@@ -397,17 +345,31 @@ async function budget() {
       h('ul', { class: 'notes' }, rules.length ? rules.map((r) => h('li', {}, h('span', { class: 'tag' }, r.category), h('span', {}, `"${r.keyword}"`),
         h('button', { class: 'btn ghost sm', style: 'margin-left:auto', 'aria-label': `${r.keyword} 규칙 삭제`, onclick: guard(async () => { await api(`/api/rules/${r.id}`, { method: 'DELETE' }); render(); }) }, '삭제'))) : [h('li', { class: 'muted' }, '아직 규칙이 없어요.')])),
     section('categories', cform),
-    section('account', h('p', { class: 'muted' }, `${me.email} · 계정을 삭제하면 내 거래·예산·규칙이 모두 지워지고 되돌릴 수 없어요.`), deleteForm())));
+    section('data', dataPanel())));
 }
 
-function deleteForm() {
-  const pw = h('input', { type: 'password', required: true, autocomplete: 'current-password' });
-  return h('form', { class: 'form card', onsubmit: guard(async (e) => {
-    e.preventDefault();
-    if (!confirm('정말 계정과 모든 데이터를 삭제할까요?')) return;
-    await api('/api/auth/delete-account', { method: 'POST', body: { password: pw.value } });
-    toast('계정을 삭제했어요'); location.hash = '#/'; toAuth();
-  }) }, h('label', {}, '비밀번호 확인', pw), h('button', { class: 'btn ghost', type: 'submit' }, '계정 삭제'));
+function dataPanel() {
+  const file = h('input', { type: 'file', accept: 'application/json,.json', 'aria-label': '백업 파일 선택', onchange: guard(async () => {
+    const f = file.files[0]; if (!f) return;
+    let d; try { d = JSON.parse(await f.text()); } catch { throw new Error('JSON 파일을 읽을 수 없어요'); }
+    if (!confirm('지금 데이터를 백업 파일의 내용으로 바꿀까요?')) { file.value = ''; return; }
+    await api('/api/restore', { method: 'POST', body: d }); cats = []; toast('복원했어요'); render();
+  }) });
+  const btn = (label, fn, ghost = true) => h('button', { class: `btn${ghost ? ' ghost' : ''}`, type: 'button', onclick: guard(fn) }, label);
+  return h('div', {},
+    h('p', { class: 'muted' }, '데이터는 이 브라우저에만 저장돼요. 서버로 보내지 않아서 다른 사람이 볼 수 없지만, 브라우저 데이터를 지우거나 다른 기기에서 열면 보이지 않아요. 가끔 백업해 두세요.'),
+    h('div', { class: 'form card', style: 'margin-top:16px' },
+      btn('백업 내려받기', async () => {
+        const d = await api('/api/export');
+        const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(d)], { type: 'application/json' })), download: `ledger-backup-${new Date().toISOString().slice(0, 10)}.json` });
+        document.body.append(a); a.click(); a.remove(); toast('백업 파일을 내려받았어요');
+      }, false),
+      h('label', {}, '백업 불러오기', file),
+      btn('샘플 데이터 넣기', async () => { await api('/api/sample', { method: 'POST', body: {} }); toast('샘플을 넣었어요'); location.hash = '#/'; render(); }),
+      btn('모든 데이터 지우기', async () => {
+        if (!confirm('이 브라우저의 거래·예산·규칙을 모두 지울까요? 되돌릴 수 없어요.')) return;
+        await api('/api/reset', { method: 'POST', body: {} }); cats = []; toast('모두 지웠어요'); render();
+      })));
 }
 
 // ---------- 절약 인사이트 ----------
@@ -426,12 +388,10 @@ async function saving() {
 // ---------- 라우터 ----------
 const routes = { '': dashboard, transactions, upload, budget, saving };
 async function render() {
-  if (!me) { try { me = await api('/api/auth/me'); } catch { me = null; } }
-  paintAccount();
-  if (!me) return authView();
   const key = location.hash.replace(/^#\/?/, '');
   const fn = routes[key] || dashboard;
   document.querySelectorAll('nav a').forEach((a) => (a.dataset.route === key ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+  if (!storageOk) toast('이 브라우저에서는 저장이 안 될 수 있어요 (시크릿 모드 등)');
   try { if (!cats.length) await loadCats(); await fn(); }
   catch (e) { $view.replaceChildren(h('p', { class: 'empty' }, `불러오지 못했어요: ${e.message}`)); }
 }
